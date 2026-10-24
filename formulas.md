@@ -28,7 +28,14 @@ laplacian W_visc = 45/(pi h^6) * (h-r), for 0 <= r < h; otherwise 0.
 
 rho_i = sum_j m_j W_poly6(norm(x_i-x_j), h).
 
-The sum includes the particle itself. The initial solver uses all-pairs neighbor evaluation, O(N^2), for a small reference baseline. A uniform grid or spatial hash is needed before scaling to larger scenes.
+The sum includes the particle itself. The solver uses a 3D uniform spatial hash to find candidate neighbors.
+
+For cell width h, the integer cell coordinate is
+c(x) = (floor(x/h), floor(y/h), floor(z/h)).
+
+Each particle is inserted into the cell keyed by c(x_i). To query neighbors of particle i, inspect its own cell and the 26 immediately adjacent cells (offsets delta_x, delta_y, delta_z in {-1,0,1}). Because every cell has width h, any particle with Euclidean distance less than h must be in one of those 27 cells. The kernel is still evaluated with the exact distance, so cell membership only filters candidates; it does not approximate the SPH equations.
+
+Expected work is O(N + sum_i k_i) for grid construction and queries, where k_i is the number of candidate particles in the 27 cells around particle i. This is typically much cheaper than O(N^2) for spatially distributed particles, but can still approach O(N^2) when many particles occupy the same few cells. Grid coordinates are checked for integer-range overflow.
 
 ## 4. Weakly-compressible equation of state
 
@@ -70,7 +77,7 @@ After integration, clamp each coordinate to the corresponding axis-aligned domai
 - Check finite positions, velocities, densities, pressures, and accelerations after each step.
 - Test kernel support, self-density, gravity, 3D interactions, boundaries, and timestep sensitivity.
 - Track density deviation abs(rho_i-rho_0)/rho_0 and total momentum in later validation.
-- The O(N^2) all-pairs search is temporary; add a uniform grid/spatial hash before large scenes.
+- The uniform spatial hash is rebuilt from current positions before density and force evaluation; it reduces candidate checks but does not change the kernel support test or the SPH equations.
 
 ## 10. Deferred work
 
