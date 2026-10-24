@@ -1,128 +1,77 @@
 # GIFPY — Liquid Simulation Formula Reference
 
-This document is the mathematical source of truth for the first solver: a **2D weakly-compressible Smoothed Particle Hydrodynamics (WCSPH)** reference implementation. The first implementation is intentionally small and testable; it is not yet a production-quality free-surface renderer.
+This document is the mathematical source of truth for the initial **3D weakly-compressible Smoothed Particle Hydrodynamics (WCSPH)** solver. It is a small reference implementation, not yet a production-quality free-surface renderer.
 
 ## 1. State and units
 
-For particle \(i\):
-- position \(\mathbf{x}_i\): m
-- velocity \(\mathbf{v}_i\): m s\(^{-1}\)
-- mass \(m_i\): kg
-- density \(\rho_i\): kg m\(^{-2}\) in this 2D model
-- pressure \(p_i\): kg s\(^{-2}\) (2D pressure units)
-- acceleration \(\mathbf{a}_i\): m s\(^{-2}\)
-- smoothing length \(h\): m
-- timestep \(\Delta t\): s
+For particle i: position x_i in metres, velocity v_i in m/s, mass m_i in kg, density rho_i in kg/m^3, pressure p_i in Pa, acceleration a_i in m/s^2, smoothing length h in metres, and timestep dt in seconds.
 
-The 2D solver uses consistent 2D kernel normalization. Parameters such as reference density and viscosity are model inputs; timestep and kernel support are numerical choices. Do not change physical constants merely to hide numerical instability.
+Let r_ij = x_i - x_j and r = norm(r_ij). Kernels are zero for r >= h. All kernels below use 3D normalization.
 
-## 2. Kernel functions
+## 2. 3D kernels
 
-Let \(\mathbf{r}_{ij}=\mathbf{x}_i-\mathbf{x}_j\), \(r=\|\mathbf{r}_{ij}\|\), and \(q=r/h\). Kernels are zero for \(r\ge h\).
+### 2.1 Poly6 density kernel
 
-### 2.1 Poly6 density kernel (2D)
+W_poly6(r,h) = 315/(64 pi h^9) * (h^2-r^2)^3, for 0 <= r < h; otherwise 0.
 
-\[
-W_{poly6}(r,h)=\frac{4}{\pi h^8}(h^2-r^2)^3,\quad 0\le r<h
-\]
+Its gradient is grad_i W_poly6 = -945/(32 pi h^9) * (h^2-r^2)^2 * r_ij. The implementation uses the kernel for density; this gradient is documented for completeness.
 
-Its gradient:
-\[
-\nabla_i W_{poly6}=-\frac{24}{\pi h^8}(h^2-r^2)^2\mathbf{r}_{ij}
-\]
+### 2.2 Spiky pressure-gradient kernel
 
-### 2.2 Spiky pressure-gradient kernel (2D)
+grad_i W_spiky = -45/(pi h^6) * ((h-r)^2/r) * r_ij, for 0 < r < h. At r = 0, the implementation returns zero to avoid division by zero.
 
-\[
-\nabla_i W_{spiky}= -\frac{30}{\pi h^5}\frac{(h-r)^2}{r}\mathbf{r}_{ij},\quad 0<r<h
-\]
+### 2.3 Viscosity Laplacian
 
-The gradient is defined as zero at \(r=0\) to avoid division by zero.
-
-### 2.3 Viscosity Laplacian (2D)
-
-\[
-\nabla^2 W_{visc}=\frac{40}{\pi h^5}(h-r),\quad 0\le r<h
-\]
-
-These kernels have distinct roles: poly6 estimates density, spiky gradient computes pressure force, and the viscosity Laplacian computes viscous diffusion.
+laplacian W_visc = 45/(pi h^6) * (h-r), for 0 <= r < h; otherwise 0.
 
 ## 3. Density estimation
 
-Include the particle itself in the neighbor sum:
-\[
-\rho_i=\sum_j m_j W_{poly6}(\|\mathbf{x}_i-\mathbf{x}_j\|,h)
-\]
+rho_i = sum_j m_j W_poly6(norm(x_i-x_j), h).
 
-This sum is over all particles within support radius \(h\), including \(i=j\). The initial reference implementation uses a simple all-pairs neighbor loop for clarity and small test cases; replace it with a uniform grid or spatial hash before scaling to large particle counts.
+The sum includes the particle itself. The initial solver uses all-pairs neighbor evaluation, O(N^2), for a small reference baseline. A uniform grid or spatial hash is needed before scaling to larger scenes.
 
-## 4. Equation of state
+## 4. Weakly-compressible equation of state
 
-The initial linear weakly-compressible equation of state is:
-\[
-p_i=c_0^2(\rho_i-\rho_0)
-\]
-where \(\rho_0\) is rest density and \(c_0\) is artificial speed of sound. For stability in free-surface cases, pressure may be clamped to non-negative values in this first baseline:
-\[
-p_i=\max(0,c_0^2(\rho_i-\rho_0))
-\]
-This clamp is a modeling/stabilization choice, not a universal SPH law. The C++ implementation documents it explicitly.
+p_i = c_0^2 (rho_i - rho_0).
+
+The current baseline clamps pressure to non-negative values: p_i = max(0, c_0^2 (rho_i-rho_0)). This is a stabilization/modeling choice, not a universal SPH rule.
 
 ## 5. Pressure acceleration
 
-A symmetric pressure-force discretization is:
-\[
-\mathbf{a}^{p}_i=-\sum_{j\ne i}m_j\left(\frac{p_i}{\rho_i^2}+\frac{p_j}{\rho_j^2}\right)\nabla_i W_{spiky}(r_{ij},h)
-\]
-The symmetric pair form helps conserve linear momentum when pairs and gradients are evaluated consistently. Density denominators are protected by a small positive numerical floor.
+a_i^p = -sum_(j != i) m_j (p_i/rho_i^2 + p_j/rho_j^2) grad_i W_spiky(r_ij,h).
+
+This symmetric pair form supports linear-momentum conservation when pair evaluations are consistent. Density denominators use a positive numerical floor.
 
 ## 6. Viscous acceleration
 
-\[
-\mathbf{a}^{\nu}_i=\mu\sum_{j\ne i}\frac{m_j}{\rho_j}(\mathbf{v}_j-\mathbf{v}_i)\nabla^2 W_{visc}(r_{ij},h)
-\]
-Here \(\mu\) is the model's kinematic-viscosity-like coefficient used by this discretization. Its precise interpretation depends on the selected SPH formulation; do not assume it is interchangeable with dynamic viscosity without deriving the density factors and units for a chosen formulation.
+a_i^nu = mu sum_(j != i) (m_j/rho_j) (v_j-v_i) laplacian W_visc(r_ij,h).
 
-## 7. Momentum and gravity
+Here mu is the coefficient used by this simplified discretization; its physical interpretation depends on the SPH formulation. Do not treat it as interchangeable with dynamic viscosity without deriving the units and density factors.
 
-\[
-\frac{d\mathbf{v}_i}{dt}=\mathbf{a}^{p}_i+\mathbf{a}^{\nu}_i+\mathbf{g}
-\]
-\[
-\frac{d\mathbf{x}_i}{dt}=\mathbf{v}_i
-\]
+## 7. Momentum, gravity, and integration
 
-Gravity is an acceleration vector in m s\(^{-2}\). In a screen-like coordinate system where positive y points downward, use \(\mathbf{g}=(0,g)\); otherwise use the coordinate convention consistently across simulation and rendering.
+dv_i/dt = a_i^p + a_i^nu + g; dx_i/dt = v_i.
 
-## 8. Time integration
+Semi-implicit Euler updates velocity first, then position:
+v_i^(n+1) = v_i^n + dt*a_i^n
+x_i^(n+1) = x_i^n + dt*v_i^(n+1)
 
-The baseline uses semi-implicit (symplectic) Euler:
-\[
-\mathbf{v}^{n+1}_i=\mathbf{v}^{n}_i+\Delta t\,\mathbf{a}^{n}_i
-\]
-\[
-\mathbf{x}^{n+1}_i=\mathbf{x}^{n}_i+\Delta t\,\mathbf{v}^{n+1}_i
-\]
-It is generally more stable for mechanical systems than explicit position Euler, but does not guarantee stability for arbitrary \(\Delta t\). Compute forces from the current state, update velocity, then position.
+Gravity is a 3D acceleration vector. The default convention is positive Y upward, so default gravity is (0,-9.81,0).
 
-## 9. Domain boundaries
+## 8. Domain boundaries
 
-The initial demo uses axis-aligned box boundaries. After position integration, clamp each particle to the domain and reflect only inward-violating velocity:
-\[
-v_n\leftarrow -e v_n
-\]
-where \(e\in[0,1]\) is coefficient of restitution. This simple boundary treatment is for baseline tests only; robust liquid-wall interaction needs boundary particles or a validated boundary formulation.
+After integration, clamp each coordinate to the corresponding axis-aligned domain bounds. If a particle crosses a wall, reverse the outward velocity component using v_n = -e*v_n, where restitution e is in [0,1]. This is a simple baseline; robust liquid-wall interaction needs validated boundary particles or another boundary formulation.
 
-## 10. Numerical safeguards and validation
+## 9. Safeguards and validation
 
-- Reject non-finite input parameters and non-positive \(h\), \(\rho_0\), and \(\Delta t\).
-- Never evaluate the spiky gradient at \(r=0\).
+- Reject non-finite parameters and state, non-positive smoothing length, rest density, timestep, and particle mass.
+- Avoid evaluating the spiky gradient at zero separation.
 - Protect density denominators from zero.
-- Require finite positions, velocities, densities, pressures, and accelerations after each step.
-- Test kernel support (zero at/outside \(h\)), self-density contribution, finite forces, gravity-only acceleration, and bounded-domain behavior.
-- Track timestep sensitivity, density deviation \(\epsilon_\rho=|\rho_i-\rho_0|/\rho_0\), and total momentum in later validation.
-- The first implementation uses all-pairs neighbor search, \(O(N^2)\); it is for a small reference solver only. A uniform grid/spatial hash is a required optimization before large scenes.
+- Check finite positions, velocities, densities, pressures, and accelerations after each step.
+- Test kernel support, self-density, gravity, 3D interactions, boundaries, and timestep sensitivity.
+- Track density deviation abs(rho_i-rho_0)/rho_0 and total momentum in later validation.
+- The O(N^2) all-pairs search is temporary; add a uniform grid/spatial hash before large scenes.
 
-## 11. Explicitly deferred
+## 10. Deferred work
 
-Surface tension, incompressible pressure projection, adaptive timesteps, advanced boundary conditions, 3D kernels, GPU compute, and high-performance neighbor structures are not part of this baseline. Each must have its equations, assumptions, and tests documented before implementation.
+Surface tension, incompressible pressure projection, adaptive timesteps, advanced boundary conditions, GPU compute, and accelerated neighbor search remain future work. Add the equations, assumptions, and tests to this file before implementing each method.
