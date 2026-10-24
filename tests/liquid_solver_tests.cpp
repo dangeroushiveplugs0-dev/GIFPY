@@ -88,6 +88,34 @@ int main() {
                     gifpy::LiquidSolver::poly6(0.0, grid_parameters.smoothing_length), 1.0e-8),
                 "neighbor search must exclude particles outside kernel support");
 
+        // Compare hashed density estimates against a brute-force reference over a deterministic cloud.
+        gifpy::Parameters reference_parameters = pair_parameters;
+        reference_parameters.smoothing_length = 0.17;
+        gifpy::LiquidSolver reference_solver(reference_parameters);
+        std::vector<gifpy::Particle> cloud;
+        for (int i = 0; i < 120; ++i) {
+            gifpy::Particle q;
+            q.position = {
+                std::sin(static_cast<double>(i) * 1.37) * 0.9,
+                std::cos(static_cast<double>(i) * 0.73) * 0.9,
+                std::sin(static_cast<double>(i) * 0.29 + 0.4) * 0.9
+            };
+            q.mass = 0.04 + static_cast<double>(i % 5) * 0.01;
+            cloud.push_back(q);
+        }
+        reference_solver.set_particles(cloud);
+        reference_solver.compute_density_and_pressure();
+        for (std::size_t i = 0; i < cloud.size(); ++i) {
+            double expected_density = 0.0;
+            for (const auto& q : cloud) {
+                expected_density += q.mass * gifpy::LiquidSolver::poly6(
+                    gifpy::length(cloud[i].position - q.position),
+                    reference_parameters.smoothing_length);
+            }
+            require(near(reference_solver.particles()[i].density, expected_density, 1.0e-7),
+                    "spatial hash density must match brute-force reference");
+        }
+
         // Z-axis wall collision must be handled independently.
         gifpy::Parameters wall_parameters = p;
         wall_parameters.gravity = {0.0, 0.0, 0.0};
