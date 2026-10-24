@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace gifpy {
 namespace {
@@ -13,6 +17,76 @@ constexpr double density_floor = 1.0e-9;
 bool finite(Vec3 v) {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
 }
+
+struct CellKey {
+    std::int64_t x;
+    std::int64_t y;
+    std::int64_t z;
+    bool operator==(const CellKey&) const = default;
+};
+
+struct CellKeyHash {
+    std::size_t operator()(const CellKey& key) const noexcept {
+        const auto mix = [](std::uint64_t value) {
+            value ^= value >> 30;
+            value *= UINT64_C(0xbf58476d1ce4e5b9);
+            value ^= value >> 27;
+            value *= UINT64_C(0x94d049bb133111eb);
+            return value ^ (value >> 31);
+        };
+        std::uint64_t hash = mix(static_cast<std::uint64_t>(key.x));
+        hash ^= mix(static_cast<std::uint64_t>(key.y) + UINT64_C(0x9e3779b97f4a7c15));
+        hash ^= mix(static_cast<std::uint64_t>(key.z) + UINT64_C(0x3c6ef372fe94f82a));
+        return static_cast<std::size_t>(hash);
+    }
+};
+
+std::int64_t cell_coordinate(double coordinate, double cell_width) {
+    const long double scaled = std::floor(static_cast<long double>(coordinate) /
+                                          static_cast<long double>(cell_width));
+    const long double low = static_cast<long double>(std::numeric_limits<std::int64_t>::min()) + 1.0L;
+    const long double high = static_cast<long double>(std::numeric_limits<std::int64_t>::max()) - 1.0L;
+    if (!std::isfinite(scaled) || scaled < low || scaled > high) {
+        throw std::overflow_error("Particle position exceeds spatial-grid coordinate range");
+    }
+    return static_cast<std::int64_t>(scaled);
+}
+
+class SpatialGrid {
+public:
+    SpatialGrid(const std::vector<Particle>& particles, double cell_width)
+        : cell_width_(cell_width) {
+        cells_.reserve(particles.size());
+        for (std::size_t i = 0; i < particles.size(); ++i) {
+            cells_[key_for(particles[i].position)].push_back(i);
+        }
+    }
+
+    template <typename Function>
+    void for_each_candidate(Vec3 position, Function&& function) const {
+        const CellKey center = key_for(position);
+        for (std::int64_t dx = -1; dx <= 1; ++dx) {
+            for (std::int64_t dy = -1; dy <= 1; ++dy) {
+                for (std::int64_t dz = -1; dz <= 1; ++dz) {
+                    const CellKey key{center.x + dx, center.y + dy, center.z + dz};
+                    const auto found = cells_.find(key);
+                    if (found == cells_.end()) continue;
+                    for (const std::size_t index : found->second) function(index);
+                }
+            }
+        }
+    }
+
+private:
+    CellKey key_for(Vec3 position) const {
+        return {cell_coordinate(position.x, cell_width_),
+                cell_coordinate(position.y, cell_width_),
+                cell_coordinate(position.z, cell_width_)};
+    }
+
+    double cell_width_;
+    std::unordered_map<CellKey, std::vector<std::size_t>, CellKeyHash> cells_;
+};
 }
 
 Vec3 operator+(Vec3 a, const Vec3& b) { return a += b; }
@@ -76,12 +150,14 @@ double LiquidSolver::viscosity_laplacian(double r, double h) {
 }
 
 void LiquidSolver::compute_density_and_pressure() {
+    const double h = parameters_.smoothing_length;
+    const SpatialGrid grid(particles_, h);
     for (auto& pi_particle : particles_) {
         double density = 0.0;
-        for (const auto& pj : particles_) {
-            density += pj.mass * poly6(length(pi_particle.position - pj.position),
-                                       parameters_.smoothing_length);
-        }
+        grid.for_each_candidate(pi_particle.position, [&](std::size_t j) {
+            const auto& pj = particles_[j];
+            density += pj.mass * poly6(length(pi_particle.position - pj.position), h);
+        });
         pi_particle.density = std::max(density, density_floor);
         const double raw_pressure = parameters_.sound_speed * parameters_.sound_speed *
                                     (pi_particle.density - parameters_.rest_density);
@@ -109,15 +185,16 @@ void LiquidSolver::step() {
     compute_density_and_pressure();
     std::vector<Vec3> accelerations(particles_.size(), parameters_.gravity);
     const double h = parameters_.smoothing_length;
+    const SpatialGrid grid(particles_, h);
 
     for (std::size_t i = 0; i < particles_.size(); ++i) {
         const auto& pi_particle = particles_[i];
-        for (std::size_t j = 0; j < particles_.size(); ++j) {
-            if (i == j) continue;
+        grid.for_each_candidate(pi_particle.position, [&](std::size_t j) {
+            if (i == j) return;
             const auto& pj = particles_[j];
             const Vec3 displacement = pi_particle.position - pj.position;
             const double r = length(displacement);
-            if (r >= h || r <= 1.0e-12) continue;
+            if (r >= h || r <= 1.0e-12) return;
 
             const Vec3 grad = spiky_gradient(displacement, h);
             const double rhoi = std::max(pi_particle.density, density_floor);
@@ -129,7 +206,7 @@ void LiquidSolver::step() {
             const double visc_term = parameters_.viscosity * pj.mass / rhoj *
                                      viscosity_laplacian(r, h);
             accelerations[i] += (pj.velocity - pi_particle.velocity) * visc_term;
-        }
+        });
     }
 
     const double dt = parameters_.time_step;
