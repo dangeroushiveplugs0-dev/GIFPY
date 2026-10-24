@@ -75,7 +75,7 @@ int main() {
         wall_parameters.restitution = 1.0;
         gifpy::LiquidSolver wall_solver(wall_parameters);
         gifpy::Particle wall_particle;
-        wall_particle.position = {0.0, 0.0, 0.01};
+        wall_particle.position = {0.0, 0.0, 0.001};
         wall_particle.velocity = {0.0, 0.0, -2.0};
         wall_solver.set_particles({wall_particle});
         wall_solver.step();
