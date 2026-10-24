@@ -20,8 +20,8 @@ std::vector<int> parse_counts(const std::string& text) {
         if (item.empty()) throw std::invalid_argument("Empty particle count in --counts");
         std::size_t consumed = 0;
         const long value = std::stol(item, &consumed);
-        if (consumed != item.size() || value <= 0 || value > 2000000)
-            throw std::invalid_argument("Particle counts must be integers in [1, 2000000]");
+        if (consumed != item.size() || value <= 0 || value > 8192)
+            throw std::invalid_argument("Particle counts must be integers in [1, 8192] (brute-force reference is O(N^2))");
         counts.push_back(static_cast<int>(value));
     }
     if (counts.empty()) throw std::invalid_argument("At least one particle count is required");
