@@ -96,4 +96,4 @@ Run it from a configured CMake build directory:
 ./gifpy_benchmark --counts 64,256,1024,4096 --steps 20
 ```
 
-The output includes full-step timing CSV rows and density-comparison rows. Compare timings on the same machine/build configuration; they are measurements rather than performance guarantees, and CI only runs a small smoke configuration. The brute-force density reference has O(N^2) work, so avoid very large counts when using it.
+The output includes full-step timing CSV rows and density-comparison rows. Compare timings on the same machine/build configuration; they are measurements rather than performance guarantees, and CI only runs a small smoke configuration. The CLI caps particle counts at 8,192 because the brute-force density reference has O(N^2) work. For larger simulations, use a separate production-solver benchmark without the reference comparison.
