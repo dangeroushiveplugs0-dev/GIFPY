@@ -1,1 +1,2 @@
-# PHYSPEC
+# GIFPY
+A Phyics engine with HLSL rendering and phyics sim and gen based by mathematics formulas,...
