@@ -182,11 +182,23 @@ void LiquidSolver::enforce_boundaries(Particle& p) const {
 }
 
 void LiquidSolver::step() {
-    compute_density_and_pressure();
-    std::vector<Vec3> accelerations(particles_.size(), parameters_.gravity);
     const double h = parameters_.smoothing_length;
+    // Particle positions do not change until integration, so one grid can serve
+    // both density evaluation and force accumulation during this step.
     const SpatialGrid grid(particles_, h);
+    for (auto& pi_particle : particles_) {
+        double density = 0.0;
+        grid.for_each_candidate(pi_particle.position, [&](std::size_t j) {
+            const auto& pj = particles_[j];
+            density += pj.mass * poly6(length(pi_particle.position - pj.position), h);
+        });
+        pi_particle.density = std::max(density, density_floor);
+        const double raw_pressure = parameters_.sound_speed * parameters_.sound_speed *
+                                    (pi_particle.density - parameters_.rest_density);
+        pi_particle.pressure = std::max(0.0, raw_pressure);
+    }
 
+    std::vector<Vec3> accelerations(particles_.size(), parameters_.gravity);
     for (std::size_t i = 0; i < particles_.size(); ++i) {
         const auto& pi_particle = particles_[i];
         grid.for_each_candidate(pi_particle.position, [&](std::size_t j) {
