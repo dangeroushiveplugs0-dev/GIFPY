@@ -77,7 +77,7 @@ After integration, clamp each coordinate to the corresponding axis-aligned domai
 - Check finite positions, velocities, densities, pressures, and accelerations after each step.
 - Test kernel support, self-density, gravity, 3D interactions, boundaries, and timestep sensitivity.
 - Track density deviation abs(rho_i-rho_0)/rho_0 and total momentum in later validation.
-- The uniform spatial hash is rebuilt from current positions before density and force evaluation; it reduces candidate checks but does not change the kernel support test or the SPH equations.
+- The uniform spatial hash is built from current positions once per solver step and reused for both density and force evaluation; positions are only updated after force accumulation. The standalone `compute_density_and_pressure()` call builds its own grid. This reuse reduces grid-construction overhead without changing the kernel support test or SPH equations.
 
 ## 10. Deferred work
 
