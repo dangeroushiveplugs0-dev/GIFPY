@@ -83,9 +83,11 @@ After integration, clamp each coordinate to the corresponding axis-aligned domai
 
 Surface tension, incompressible pressure projection, adaptive timesteps, advanced boundary conditions, GPU compute, and accelerated neighbor search remain future work. Add the equations, assumptions, and tests to this file before implementing each method.
 
-## 11. Repeatable scaling benchmark
+## 11. Repeatable scaling and neighbor-search benchmark
 
 The `gifpy_benchmark` executable measures wall-clock time for complete solver steps at several particle counts. Initial positions come from a deterministic jittered 3D lattice, so repeated runs use the same starting distribution. The timer includes spatial-grid rebuilding, density/pressure evaluation, force accumulation, integration, and boundary handling.
+
+For each particle count, it also compares the production spatial-hash density/pressure pass against a local brute-force density reference using the exact same initial particle positions, masses, smoothing length, and Poly6 kernel. It reports both timings, the reference/grid timing ratio, and the maximum relative density error. The benchmark fails if that error exceeds `1e-12`; the brute-force path is only a validation/performance reference and is not used by the production solver.
 
 Run it from a configured CMake build directory:
 
@@ -94,4 +96,4 @@ Run it from a configured CMake build directory:
 ./gifpy_benchmark --counts 64,256,1024,4096 --steps 20
 ```
 
-The output is CSV with particle count, number of steps, total elapsed milliseconds, milliseconds per step, and particle-steps per second. Compare results on the same machine/build configuration; timings are measurements, not correctness assertions, and CI only runs a small smoke configuration. The benchmark currently measures the grid-based solver only; a future benchmark can compare it against a separately implemented brute-force reference using the same particle states.
+The output includes full-step timing CSV rows and density-comparison rows. Compare timings on the same machine/build configuration; they are measurements rather than performance guarantees, and CI only runs a small smoke configuration. The brute-force density reference has O(N^2) work, so avoid very large counts when using it.
