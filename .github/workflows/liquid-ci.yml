@@ -1,0 +1,23 @@
+name: GIFPY Liquid CI
+
+on:
+  push:
+    branches: [Liquid]
+  pull_request:
+    branches: [Master]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Run smoke demo
+        run: ./build/gifpy_demo
