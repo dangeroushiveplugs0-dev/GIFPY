@@ -4,19 +4,22 @@
 
 namespace gifpy {
 
-struct Vec2 {
+struct Vec3 {
     double x{0.0};
     double y{0.0};
-    Vec2& operator+=(const Vec2& other) { x += other.x; y += other.y; return *this; }
+    double z{0.0};
+    Vec3& operator+=(const Vec3& other) {
+        x += other.x; y += other.y; z += other.z; return *this;
+    }
 };
-Vec2 operator+(Vec2 a, const Vec2& b);
-Vec2 operator-(Vec2 a, const Vec2& b);
-Vec2 operator*(Vec2 a, double s);
-double length(Vec2 v);
+Vec3 operator+(Vec3 a, const Vec3& b);
+Vec3 operator-(Vec3 a, const Vec3& b);
+Vec3 operator*(Vec3 a, double s);
+double length(Vec3 v);
 
 struct Particle {
-    Vec2 position{};
-    Vec2 velocity{};
+    Vec3 position{};
+    Vec3 velocity{};
     double mass{1.0};
     double density{0.0};
     double pressure{0.0};
@@ -27,10 +30,10 @@ struct Parameters {
     double rest_density{1000.0};
     double sound_speed{20.0};
     double viscosity{0.05};
-    Vec2 gravity{0.0, -9.81};
+    Vec3 gravity{0.0, -9.81, 0.0};
     double time_step{0.0005};
-    Vec2 domain_min{0.0, 0.0};
-    Vec2 domain_max{1.0, 1.0};
+    Vec3 domain_min{0.0, 0.0, 0.0};
+    Vec3 domain_max{1.0, 1.0, 1.0};
     double restitution{0.0};
 };
 
@@ -44,7 +47,7 @@ public:
     void step();
 
     static double poly6(double distance, double h);
-    static Vec2 spiky_gradient(Vec2 displacement, double h);
+    static Vec3 spiky_gradient(Vec3 displacement, double h);
     static double viscosity_laplacian(double distance, double h);
 
 private:
