@@ -117,6 +117,9 @@ int main(int argc, char** argv) {
                                               std::max(std::abs(reference), 1.0e-9);
                 max_relative_density_error = std::max(max_relative_density_error, relative_error);
             }
+            if (max_relative_density_error > 1.0e-12) {
+                throw std::runtime_error("Spatial-hash density differs from brute-force reference beyond tolerance");
+            }
 
             gifpy::LiquidSolver solver(parameters);
             solver.set_particles(initial_particles);
