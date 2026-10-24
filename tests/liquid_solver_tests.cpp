@@ -67,6 +67,27 @@ int main() {
                 pair_solver.particles()[1].velocity.x > 0.0,
                 "positive pressure should separate the particle pair along X");
 
+        // Spatial-grid lookup must retain cross-cell neighbors and exclude distant particles.
+        gifpy::Parameters grid_parameters = pair_parameters;
+        grid_parameters.smoothing_length = 0.2;
+        grid_parameters.time_step = 0.000001;
+        gifpy::LiquidSolver grid_solver(grid_parameters);
+        gifpy::Particle grid_a;
+        grid_a.position = {0.199, 0.199, 0.199};
+        grid_a.mass = 0.1;
+        gifpy::Particle grid_b = grid_a;
+        grid_b.position = {0.201, 0.201, 0.201};
+        gifpy::Particle grid_far = grid_a;
+        grid_far.position = {5.0, 5.0, 5.0};
+        grid_solver.set_particles({grid_a, grid_b, grid_far});
+        grid_solver.compute_density_and_pressure();
+        require(grid_solver.particles()[0].density > grid_a.mass *
+                    gifpy::LiquidSolver::poly6(0.0, grid_parameters.smoothing_length),
+                "neighbor search must find close particles across cell boundaries");
+        require(near(grid_solver.particles()[2].density, grid_far.mass *
+                    gifpy::LiquidSolver::poly6(0.0, grid_parameters.smoothing_length), 1.0e-8),
+                "neighbor search must exclude particles outside kernel support");
+
         // Z-axis wall collision must be handled independently.
         gifpy::Parameters wall_parameters = p;
         wall_parameters.gravity = {0.0, 0.0, 0.0};
