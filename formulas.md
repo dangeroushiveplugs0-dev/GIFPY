@@ -82,3 +82,16 @@ After integration, clamp each coordinate to the corresponding axis-aligned domai
 ## 10. Deferred work
 
 Surface tension, incompressible pressure projection, adaptive timesteps, advanced boundary conditions, GPU compute, and accelerated neighbor search remain future work. Add the equations, assumptions, and tests to this file before implementing each method.
+
+## 11. Repeatable scaling benchmark
+
+The `gifpy_benchmark` executable measures wall-clock time for complete solver steps at several particle counts. Initial positions come from a deterministic jittered 3D lattice, so repeated runs use the same starting distribution. The timer includes spatial-grid rebuilding, density/pressure evaluation, force accumulation, integration, and boundary handling.
+
+Run it from a configured CMake build directory:
+
+```sh
+./gifpy_benchmark
+./gifpy_benchmark --counts 64,256,1024,4096 --steps 20
+```
+
+The output is CSV with particle count, number of steps, total elapsed milliseconds, milliseconds per step, and particle-steps per second. Compare results on the same machine/build configuration; timings are measurements, not correctness assertions, and CI only runs a small smoke configuration. The benchmark currently measures the grid-based solver only; a future benchmark can compare it against a separately implemented brute-force reference using the same particle states.
