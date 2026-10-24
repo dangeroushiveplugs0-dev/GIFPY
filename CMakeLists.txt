@@ -16,7 +16,12 @@ endif()
 add_executable(gifpy_demo src/main.cpp)
 target_link_libraries(gifpy_demo PRIVATE gifpy_liquid)
 
+add_executable(gifpy_benchmark benchmarks/liquid_benchmark.cpp)
+target_link_libraries(gifpy_benchmark PRIVATE gifpy_liquid)
+
 enable_testing()
 add_executable(gifpy_tests tests/liquid_solver_tests.cpp)
 target_link_libraries(gifpy_tests PRIVATE gifpy_liquid)
 add_test(NAME gifpy_liquid_tests COMMAND gifpy_tests)
+
+add_test(NAME gifpy_liquid_benchmark_smoke COMMAND gifpy_benchmark --counts 64,256 --steps 3)
